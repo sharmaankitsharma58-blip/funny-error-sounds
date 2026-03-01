@@ -19,7 +19,7 @@
     "theme": "dark"
   },
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.93.0"
   },
   "categories": ["Other"],
   "keywords": ["errors", "sounds", "funny", "audio", "diagnostics", "humor", "beep"],
@@ -60,6 +60,16 @@
           "type": "boolean",
           "default": true,
           "description": "Only play sounds when the error count increases (not when errors decrease or stay the same)."
+        },
+        "funnyErrorSounds.terminalErrorSound": {
+          "type": "string",
+          "default": "bundled:makabhosda_aag",
+          "description": "Sound to play when a terminal command exits with an error (non-zero exit code).\n• Bundled: bundled:faaa | bundled:henta_ahh | bundled:makabhosda_aag\n• Generated: builtin:sadTrombone | builtin:dundunDun | builtin:alarm\n• Custom file: absolute path to a .wav / .mp3 / .ogg file\n• Set to empty string \"\" to disable terminal sounds."
+        },
+        "funnyErrorSounds.terminalErrorEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Play a sound when any terminal command fails (exits with a non-zero code)."
         }
       }
     },
@@ -83,6 +93,11 @@
         "command": "funnyErrorSounds.toggle",
         "title": "Toggle On/Off",
         "category": "Funny Error Sounds"
+      },
+      {
+        "command": "funnyErrorSounds.testTerminal",
+        "title": "Test: Terminal Error Sound",
+        "category": "Funny Error Sounds"
       }
     ]
   },
@@ -92,7 +107,7 @@
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
-    "@types/vscode": "^1.74.0",
+    "@types/vscode": "^1.93.0",
     "@types/node": "18.x",
     "typescript": "^5.3.0"
   }

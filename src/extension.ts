@@ -98,7 +98,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
 
       log(`  → ERROR detected (exit code ${code}) — playing terminal error sound`);
-      const soundSetting = cfg.get<string>('funnyErrorSounds.terminalErrorSound', 'bundled:makabhosda_aag');
+      const soundSetting = cfg.get<string>('funnyErrorSounds.terminalErrorSound', 'bundled:faaa');
       if (!soundSetting) { return; }
 
       const filePath = resolveSound(soundSetting, 'many');
@@ -129,7 +129,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('funnyErrorSounds.testTerminal', () => {
       log('Manual terminal sound test triggered');
       const cfg          = vscode.workspace.getConfiguration();
-      const soundSetting = cfg.get<string>('funnyErrorSounds.terminalErrorSound', 'bundled:makabhosda_aag');
+      const soundSetting = cfg.get<string>('funnyErrorSounds.terminalErrorSound', 'bundled:faaa');
       const filePath     = resolveSound(soundSetting, 'many');
       if (filePath) { playAudioFile(filePath); }
     }),

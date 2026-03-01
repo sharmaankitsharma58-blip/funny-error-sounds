@@ -63,7 +63,7 @@
         },
         "funnyErrorSounds.terminalErrorSound": {
           "type": "string",
-          "default": "bundled:makabhosda_aag",
+          "default": "bundled:faaa",
           "description": "Sound to play when a terminal command exits with an error (non-zero exit code).\n• Bundled: bundled:faaa | bundled:henta_ahh | bundled:makabhosda_aag\n• Generated: builtin:sadTrombone | builtin:dundunDun | builtin:alarm\n• Custom file: absolute path to a .wav / .mp3 / .ogg file\n• Set to empty string \"\" to disable terminal sounds."
         },
         "funnyErrorSounds.terminalErrorEnabled": {

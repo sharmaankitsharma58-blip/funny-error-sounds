@@ -1,0 +1,10 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+tsconfig.json
+create-icon.js
+node_modules/**
+**/*.map
+**/*.test.js
+# sounds/ is intentionally NOT listed here so MP3s are bundled into the .vsix

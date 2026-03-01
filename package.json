@@ -98,6 +98,16 @@
         "command": "funnyErrorSounds.testTerminal",
         "title": "Test: Terminal Error Sound",
         "category": "Funny Error Sounds"
+      },
+      {
+        "command": "funnyErrorSounds.checkStatus",
+        "title": "Check Status & Debug Log",
+        "category": "Funny Error Sounds"
+      },
+      {
+        "command": "funnyErrorSounds.showLog",
+        "title": "Show Output Log",
+        "category": "Funny Error Sounds"
       }
     ]
   },

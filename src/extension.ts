@@ -1,14 +1,9 @@
 /**
- * extension.ts — Entry point for Funny Error Sounds
+ * extension.ts — Funny Error Sounds
  *
  * Two error sources:
- *   1. Editor diagnostics  — red squiggles from language servers
- *   2. Terminal commands   — any command that exits with a non-zero code
- *
- * Sound resolution:
- *   bundled:<name>  → MP3 shipped inside extension's sounds/ folder
- *   builtin:<name>  → WAV generated on the fly by wavGenerator
- *   anything else   → user-supplied absolute file path (validated)
+ *   1. Editor diagnostics  (red squiggles from language servers)
+ *   2. Terminal commands   (any command that exits with non-zero code)
  */
 
 import * as vscode from 'vscode';
@@ -27,8 +22,6 @@ const BUNDLED_FILES: Record<string, string> = {
   'bundled:makabhosda_aag': 'makabhosda_aag.mp3',
 };
 
-// ─── Config keys ──────────────────────────────────────────────────────────────
-
 const SOUND_CONFIG_KEY: Record<SoundType, string> = {
   single:   'funnyErrorSounds.singleErrorSound',
   multiple: 'funnyErrorSounds.multipleErrorsSound',
@@ -45,88 +38,141 @@ const DEFAULT_SOUND: Record<SoundType, string> = {
 
 let watcher:       DiagnosticWatcher | undefined;
 let statusBar:     vscode.StatusBarItem | undefined;
+let outputChannel: vscode.OutputChannel;
 let builtinWavDir: string;
 let extensionDir:  string;
+
+function log(msg: string): void {
+  const ts = new Date().toLocaleTimeString();
+  outputChannel.appendLine(`[${ts}] ${msg}`);
+}
 
 // ─── Activation ───────────────────────────────────────────────────────────────
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  builtinWavDir = context.globalStorageUri.fsPath;
-  extensionDir  = context.extensionPath;
+  builtinWavDir  = context.globalStorageUri.fsPath;
+  extensionDir   = context.extensionPath;
+  outputChannel  = vscode.window.createOutputChannel('Funny Error Sounds');
+  context.subscriptions.push(outputChannel);
+
+  log('Extension activated ✓');
+  log(`Extension path: ${extensionDir}`);
+  log(`VS Code version: ${vscode.version}`);
 
   await fs.promises.mkdir(builtinWavDir, { recursive: true });
   await initBuiltinSounds();
+  log('Builtin sounds ready ✓');
 
-  // ── 1. Watch editor diagnostics (red squiggles) ──────────────────────────
+  // ── 1. Editor diagnostics ────────────────────────────────────────────────
   watcher = new DiagnosticWatcher((soundType) => triggerSound(soundType));
   watcher.start();
+  log('Diagnostic watcher started ✓');
 
-  // ── 2. Watch terminal command exit codes ─────────────────────────────────
+  // ── 2. Terminal — shell integration events ───────────────────────────────
+  // Log current terminals and their shell integration status at startup
+  log(`Open terminals at startup: ${vscode.window.terminals.length}`);
+  for (const t of vscode.window.terminals) {
+    const hasIntegration = !!(t as any).shellIntegration;
+    log(`  Terminal "${t.name}" — shell integration: ${hasIntegration ? 'YES ✓' : 'NO (waiting...)'}`);
+  }
+
+  // Fire when shell integration becomes active on a terminal
   context.subscriptions.push(
-    vscode.window.onDidEndTerminalShellExecution((event) => {
-      const cfg = vscode.workspace.getConfiguration();
-      if (!cfg.get<boolean>('funnyErrorSounds.enabled', true))         { return; }
-      if (!cfg.get<boolean>('funnyErrorSounds.terminalErrorEnabled', true)) { return; }
-
-      const code = event.exitCode;
-      if (code === undefined || code === 0) { return; } // success or unknown — stay silent
-
-      // Any non-zero exit code = error — play the terminal error sound
-      const soundSetting = cfg.get<string>(
-        'funnyErrorSounds.terminalErrorSound',
-        'bundled:makabhosda_aag'
-      );
-      if (!soundSetting) { return; } // empty string = user disabled terminal sounds
-
-      const filePath = resolveSound(soundSetting, 'many');
-      if (filePath) { playAudioFile(filePath); }
+    vscode.window.onDidChangeTerminalShellIntegration((event) => {
+      log(`Shell integration NOW ACTIVE on terminal: "${event.terminal.name}" ✓`);
     })
   );
 
-  // ── Status bar ───────────────────────────────────────────────────────────
+  // Fire when a shell command ends — this is the main trigger
+  context.subscriptions.push(
+    vscode.window.onDidEndTerminalShellExecution((event) => {
+      const code = event.exitCode;
+      log(`Terminal command finished — exit code: ${code ?? 'unknown'} — terminal: "${event.terminal.name}"`);
+
+      const cfg = vscode.workspace.getConfiguration();
+      if (!cfg.get<boolean>('funnyErrorSounds.enabled', true))              { return; }
+      if (!cfg.get<boolean>('funnyErrorSounds.terminalErrorEnabled', true)) { return; }
+      if (code === undefined || code === 0) {
+        log('  → Exit code 0 (success) or unknown — no sound');
+        return;
+      }
+
+      log(`  → ERROR detected (exit code ${code}) — playing terminal error sound`);
+      const soundSetting = cfg.get<string>('funnyErrorSounds.terminalErrorSound', 'bundled:makabhosda_aag');
+      if (!soundSetting) { return; }
+
+      const filePath = resolveSound(soundSetting, 'many');
+      if (filePath) {
+        log(`  → Playing: ${filePath}`);
+        playAudioFile(filePath);
+      }
+    })
+  );
+
+  // Also open a new terminal to force shell integration injection (if none open)
+  if (vscode.window.terminals.length === 0) {
+    log('No terminals open — shell integration will activate when you open a terminal');
+  }
+
+  // ── 3. Status bar ─────────────────────────────────────────────────────────
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   updateStatusBar();
   statusBar.command = 'funnyErrorSounds.toggle';
   statusBar.show();
 
-  // ── Commands ─────────────────────────────────────────────────────────────
+  // ── 4. Commands ───────────────────────────────────────────────────────────
   context.subscriptions.push(
     statusBar,
     vscode.commands.registerCommand('funnyErrorSounds.testSingle',   () => triggerSound('single',   true)),
     vscode.commands.registerCommand('funnyErrorSounds.testMultiple', () => triggerSound('multiple', true)),
     vscode.commands.registerCommand('funnyErrorSounds.testMany',     () => triggerSound('many',     true)),
     vscode.commands.registerCommand('funnyErrorSounds.testTerminal', () => {
-      // Simulate a terminal error for testing
-      const cfg = vscode.workspace.getConfiguration();
-      const soundSetting = cfg.get<string>(
-        'funnyErrorSounds.terminalErrorSound',
-        'bundled:makabhosda_aag'
-      );
-      const filePath = resolveSound(soundSetting, 'many');
+      log('Manual terminal sound test triggered');
+      const cfg          = vscode.workspace.getConfiguration();
+      const soundSetting = cfg.get<string>('funnyErrorSounds.terminalErrorSound', 'bundled:makabhosda_aag');
+      const filePath     = resolveSound(soundSetting, 'many');
       if (filePath) { playAudioFile(filePath); }
     }),
     vscode.commands.registerCommand('funnyErrorSounds.toggle', () => toggleEnabled()),
+    vscode.commands.registerCommand('funnyErrorSounds.showLog', () => {
+      outputChannel.show();
+    }),
+    vscode.commands.registerCommand('funnyErrorSounds.checkStatus', () => {
+      outputChannel.show();
+      log('─── STATUS CHECK ───────────────────────────────────');
+      log(`Extension enabled: ${vscode.workspace.getConfiguration().get('funnyErrorSounds.enabled')}`);
+      log(`Terminal sounds:   ${vscode.workspace.getConfiguration().get('funnyErrorSounds.terminalErrorEnabled')}`);
+      log(`Open terminals: ${vscode.window.terminals.length}`);
+      for (const t of vscode.window.terminals) {
+        const si = (t as any).shellIntegration;
+        log(`  • "${t.name}" — shell integration: ${si ? 'ACTIVE ✓' : 'NOT ACTIVE ✗'}`);
+      }
+      if (vscode.window.terminals.length === 0) {
+        log('  ⚠ No terminals open — open a new terminal to get shell integration');
+      }
+      log('────────────────────────────────────────────────────');
+    }),
   );
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('funnyErrorSounds.enabled')) {
-        updateStatusBar();
-      }
+      if (e.affectsConfiguration('funnyErrorSounds.enabled')) { updateStatusBar(); }
     })
   );
+
+  log('All listeners registered ✓');
+  log('─── Open the terminal and run a failing command to test ───');
 }
 
 export function deactivate(): void {
   watcher?.dispose();
 }
 
-// ─── Sound playback ───────────────────────────────────────────────────────────
+// ─── Sound resolution ─────────────────────────────────────────────────────────
 
 function triggerSound(soundType: SoundType, force = false): void {
   const config = vscode.workspace.getConfiguration();
   if (!force && !config.get<boolean>('funnyErrorSounds.enabled', true)) { return; }
-
   const setting  = config.get<string>(SOUND_CONFIG_KEY[soundType], DEFAULT_SOUND[soundType]);
   const filePath = resolveSound(setting, soundType);
   if (filePath) { playAudioFile(filePath); }
@@ -136,15 +182,13 @@ function resolveSound(setting: string, soundType: SoundType): string | null {
   if (setting.startsWith('bundled:')) {
     const fileName = BUNDLED_FILES[setting];
     if (!fileName) {
-      vscode.window.showErrorMessage(
-        `[Funny Error Sounds] Unknown bundled sound: "${setting}". ` +
-        `Valid: ${Object.keys(BUNDLED_FILES).join(', ')}`
-      );
+      vscode.window.showErrorMessage(`[Funny Error Sounds] Unknown bundled sound: "${setting}"`);
       return null;
     }
     const resolved = path.join(extensionDir, 'sounds', fileName);
     if (!fs.existsSync(resolved)) {
-      vscode.window.showErrorMessage(`[Funny Error Sounds] Bundled sound file missing: ${resolved}`);
+      log(`ERROR: Bundled sound missing at: ${resolved}`);
+      vscode.window.showErrorMessage(`[Funny Error Sounds] Missing sound file: ${resolved}`);
       return null;
     }
     return resolved;
@@ -152,10 +196,7 @@ function resolveSound(setting: string, soundType: SoundType): string | null {
 
   if (setting.startsWith('builtin:')) {
     if (!BUILTIN_GENERATORS[setting]) {
-      vscode.window.showErrorMessage(
-        `[Funny Error Sounds] Unknown builtin: "${setting}". ` +
-        `Valid: ${Object.keys(BUILTIN_GENERATORS).join(', ')}`
-      );
+      vscode.window.showErrorMessage(`[Funny Error Sounds] Unknown builtin: "${setting}"`);
       return null;
     }
     return path.join(builtinWavDir, setting.replace('builtin:', '') + '.wav');
@@ -163,15 +204,11 @@ function resolveSound(setting: string, soundType: SoundType): string | null {
 
   const err = validateCustomSoundPath(setting);
   if (err) {
-    vscode.window.showErrorMessage(
-      `[Funny Error Sounds] Invalid path for "${soundType}" sound: ${err}`
-    );
+    vscode.window.showErrorMessage(`[Funny Error Sounds] Invalid path for "${soundType}" sound: ${err}`);
     return null;
   }
   return setting;
 }
-
-// ─── Init generated WAV builtins ─────────────────────────────────────────────
 
 async function initBuiltinSounds(): Promise<void> {
   for (const [name, generate] of Object.entries(BUILTIN_GENERATORS)) {
@@ -182,16 +219,14 @@ async function initBuiltinSounds(): Promise<void> {
   }
 }
 
-// ─── Toggle ───────────────────────────────────────────────────────────────────
+// ─── Toggle / Status bar ──────────────────────────────────────────────────────
 
 async function toggleEnabled(): Promise<void> {
   const config  = vscode.workspace.getConfiguration();
   const current = config.get<boolean>('funnyErrorSounds.enabled', true);
   await config.update('funnyErrorSounds.enabled', !current, vscode.ConfigurationTarget.Global);
   updateStatusBar();
-  vscode.window.showInformationMessage(
-    `Funny Error Sounds: ${!current ? '🔊 Enabled' : '🔇 Disabled'}`
-  );
+  vscode.window.showInformationMessage(`Funny Error Sounds: ${!current ? '🔊 Enabled' : '🔇 Disabled'}`);
 }
 
 function updateStatusBar(): void {
